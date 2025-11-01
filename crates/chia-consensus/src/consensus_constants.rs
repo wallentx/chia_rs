@@ -14,6 +14,7 @@ use hex_literal::hex;
     py_uppercase,
     py_pickle
 )]
+#[cfg_attr(feature = "py-bindings", allow(clippy::needless_question_mark))]
 #[streamable]
 pub struct ConsensusConstants {
     /// How many blocks to target per sub-slot.

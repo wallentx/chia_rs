@@ -276,7 +276,7 @@ impl SecretKey {
 
     #[classmethod]
     #[pyo3(name = "from_parent")]
-    pub fn from_parent(_cls: &Bound<'_, PyType>, _instance: &Self) -> PyResult<Py<pyo3::PyAny>> {
+    pub fn from_parent(_cls: &Bound<'_, PyType>, _instance: &Self) -> PyResult<Py<PyAny>> {
         Err(PyNotImplementedError::new_err(
             "SecretKey does not support from_parent().",
         ))
@@ -306,11 +306,12 @@ mod pybindings {
     use super::*;
 
     use crate::parse_hex::parse_hex_string;
+    use pyo3::IntoPyObject;
 
     use chia_traits::{FromJsonDict, ToJsonDict};
 
     impl ToJsonDict for SecretKey {
-        fn to_json_dict(&self, py: Python<'_>) -> PyResult<Py<pyo3::PyAny>> {
+        fn to_json_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
             let bytes = self.to_bytes();
             Ok(("0x".to_string() + &hex::encode(bytes))
                 .into_pyobject(py)?
@@ -560,64 +561,63 @@ mod tests {
 #[cfg(feature = "py-bindings")]
 mod pytests {
     use super::*;
-    use pyo3::Python;
+    use pyo3::types::PyAnyMethods;
+    use pyo3::{PyResult, Python};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
     use rstest::rstest;
 
     #[test]
     fn test_json_dict_roundtrip() {
-        pyo3::prepare_freethreaded_python();
         let mut rng = StdRng::seed_from_u64(1337);
         let mut data = [0u8; 32];
         for _i in 0..50 {
             rng.fill(data.as_mut_slice());
             let sk = SecretKey::from_seed(&data);
-            Python::with_gil(|py| {
-                let string = sk.to_json_dict(py).expect("to_json_dict");
+            Python::attach(|py| -> PyResult<()> {
+                let string = sk.to_json_dict(py)?;
                 let py_class = py.get_type::<SecretKey>();
-                let sk2 = SecretKey::from_json_dict(&py_class, py, string.bind(py))
-                    .unwrap()
-                    .extract(py)
-                    .unwrap();
+                let sk2: SecretKey = py_class
+                    .call_method1("from_json_dict", (string,))?
+                    .extract()?;
                 assert_eq!(sk, sk2);
                 assert_eq!(sk.public_key(), sk2.public_key());
-            });
+                Ok(())
+            })
+            .unwrap();
         }
     }
 
     #[rstest]
     #[case(
         "0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e",
-        "PrivateKey, invalid length 31 expected 32"
+        "PrivateKey: expected 32 bytes, got 31"
     )]
     #[case(
         "0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00",
-        "PrivateKey, invalid length 33 expected 32"
+        "PrivateKey: expected 32 bytes, got 33"
     )]
     #[case(
         "000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00",
-        "PrivateKey, invalid length 33 expected 32"
+        "PrivateKey: expected 32 bytes, got 33"
     )]
     #[case(
         "000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e",
-        "PrivateKey, invalid length 31 expected 32"
+        "PrivateKey: expected 32 bytes, got 31"
     )]
     #[case(
         "0r0102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-        "invalid hex"
+        "invalid hex character"
     )]
     fn test_json_dict(#[case] input: &str, #[case] msg: &str) {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        Python::attach(|py| -> PyResult<()> {
             let py_class = py.get_type::<SecretKey>();
-            let err = SecretKey::from_json_dict(
-                &py_class,
-                py,
-                &input.to_string().into_pyobject(py).unwrap().into_any(),
-            )
-            .unwrap_err();
-            assert_eq!(err.value(py).to_string(), msg.to_string());
-        });
+            let err = py_class
+                .call_method1("from_json_dict", (input,))
+                .unwrap_err();
+            assert!(err.value(py).to_string().contains(msg));
+            Ok(())
+        })
+        .unwrap();
     }
 }

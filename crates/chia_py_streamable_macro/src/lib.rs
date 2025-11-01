@@ -190,6 +190,7 @@ pub fn py_streamable_macro(input: proc_macro::TokenStream) -> proc_macro::TokenS
     }
 
     py_protocol.extend(quote! {
+        #[allow(clippy::needless_question_mark)]
         #[pyo3::pymethods]
         impl #ident {
             #[classmethod]
@@ -218,6 +219,7 @@ pub fn py_streamable_macro(input: proc_macro::TokenStream) -> proc_macro::TokenS
     });
 
     let streamable = quote! {
+        #[allow(clippy::needless_question_mark)]
         #[pyo3::pymethods]
         impl #ident {
             #[classmethod]
@@ -348,6 +350,7 @@ pub fn py_streamable_macro(input: proc_macro::TokenStream) -> proc_macro::TokenS
 
     if py_pickle {
         let pickle = quote! {
+            #[allow(clippy::needless_question_mark)]
             #[pyo3::pymethods]
             impl #ident {
                 pub fn __setstate__(
