@@ -307,7 +307,7 @@ mod pybindings {
 
     use crate::parse_hex::parse_hex_string;
 
-   use chia_traits::{FromJsonDict, ToJsonDict};
+    use chia_traits::{FromJsonDict, ToJsonDict};
 
     impl ToJsonDict for SecretKey {
         fn to_json_dict(&self, py: Python<'_>) -> PyResult<Py<pyo3::PyAny>> {

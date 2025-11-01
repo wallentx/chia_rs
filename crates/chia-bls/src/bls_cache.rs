@@ -131,10 +131,9 @@ impl BlsCache {
 #[cfg(feature = "py-bindings")]
 use pyo3::{
     exceptions::PyValueError,
-    IntoPyObject,
     pybacked::PyBackedBytes,
     types::{PyAnyMethods, PyList, PyListMethods, PySequence},
-    Bound, Py, PyResult,
+    Bound, IntoPyObject, Py, PyResult,
 };
 
 #[cfg(feature = "py-bindings")]
@@ -199,10 +198,9 @@ impl BlsCache {
     pub fn py_update(&self, other: &Bound<'_, PySequence>) -> PyResult<()> {
         let mut c = self.cache.lock().expect("cache");
         for item in other.borrow().try_iter()? {
-            let (key, value): (Vec<u8>, GTElement) =
-                item?
-                    .extract::<(Vec<u8>, GTElement)>()
-                    .map_err(pyo3::PyErr::from)?;
+            let (key, value): (Vec<u8>, GTElement) = item?
+                .extract::<(Vec<u8>, GTElement)>()
+                .map_err(pyo3::PyErr::from)?;
             c.put(
                 key.try_into()
                     .map_err(|_| PyValueError::new_err("invalid key"))?,

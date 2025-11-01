@@ -250,9 +250,7 @@ impl DeltaReader {
             extracted_jobs.push((hash, path));
         }
 
-        Ok(py.detach(|| {
-            self.collect_and_return_from_merkle_blobs(&extracted_jobs, &hashes)
-        })?)
+        Ok(py.detach(|| self.collect_and_return_from_merkle_blobs(&extracted_jobs, &hashes))?)
     }
 
     #[allow(clippy::needless_pass_by_value)]

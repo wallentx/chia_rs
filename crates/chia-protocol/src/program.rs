@@ -163,7 +163,6 @@ use chia_traits::{FromJsonDict, ToJsonDict};
 #[cfg(feature = "py-bindings")]
 use chia_py_streamable_macro::PyStreamable;
 
-
 #[cfg(feature = "py-bindings")]
 use pyo3::exceptions::*;
 
