@@ -131,9 +131,10 @@ impl BlsCache {
 #[cfg(feature = "py-bindings")]
 use pyo3::{
     exceptions::PyValueError,
+    IntoPyObject,
     pybacked::PyBackedBytes,
-    types::{PyAnyMethods, PyList, PySequence},
-    Bound, PyObject, PyResult,
+    types::{PyAnyMethods, PyList, PyListMethods, PySequence},
+    Bound, Py, PyResult,
 };
 
 #[cfg(feature = "py-bindings")]
@@ -164,12 +165,12 @@ impl BlsCache {
     ) -> PyResult<bool> {
         let pks = pks
             .try_iter()?
-            .map(|item| item?.extract())
+            .map(|item| item?.extract::<PublicKey>().map_err(pyo3::PyErr::from))
             .collect::<PyResult<Vec<PublicKey>>>()?;
 
         let msgs = msgs
             .try_iter()?
-            .map(|item| item?.extract())
+            .map(|item| item?.extract::<PyBackedBytes>().map_err(pyo3::PyErr::from))
             .collect::<PyResult<Vec<PyBackedBytes>>>()?;
 
         Ok(self.aggregate_verify(pks.into_iter().zip(msgs), sig))
@@ -181,8 +182,7 @@ impl BlsCache {
     }
 
     #[pyo3(name = "items")]
-    pub fn py_items(&self, py: pyo3::Python<'_>) -> PyResult<PyObject> {
-        use pyo3::prelude::*;
+    pub fn py_items(&self, py: pyo3::Python<'_>) -> PyResult<Py<pyo3::PyAny>> {
         use pyo3::types::PyBytes;
         let ret = PyList::empty(py);
         let c = self.cache.lock().expect("cache");
@@ -190,16 +190,19 @@ impl BlsCache {
             ret.append((
                 PyBytes::new(py, key),
                 value.clone().into_pyobject(py)?.into_any(),
-            ))?;
+            ))?; // `PyBytes::new` and `into_any` provide Python-owned values
         }
-        Ok(ret.into())
+        Ok(ret.into_any().unbind())
     }
 
     #[pyo3(name = "update")]
     pub fn py_update(&self, other: &Bound<'_, PySequence>) -> PyResult<()> {
         let mut c = self.cache.lock().expect("cache");
         for item in other.borrow().try_iter()? {
-            let (key, value): (Vec<u8>, GTElement) = item?.extract()?;
+            let (key, value): (Vec<u8>, GTElement) =
+                item?
+                    .extract::<(Vec<u8>, GTElement)>()
+                    .map_err(pyo3::PyErr::from)?;
             c.put(
                 key.try_into()
                     .map_err(|_| PyValueError::new_err("invalid key"))?,
@@ -213,11 +216,11 @@ impl BlsCache {
     pub fn py_evict(&self, pks: &Bound<'_, PyList>, msgs: &Bound<'_, PyList>) -> PyResult<()> {
         let pks = pks
             .try_iter()?
-            .map(|item| item?.extract())
+            .map(|item| item?.extract::<PublicKey>().map_err(pyo3::PyErr::from))
             .collect::<PyResult<Vec<PublicKey>>>()?;
         let msgs = msgs
             .try_iter()?
-            .map(|item| item?.extract())
+            .map(|item| item?.extract::<PyBackedBytes>().map_err(pyo3::PyErr::from))
             .collect::<PyResult<Vec<PyBackedBytes>>>()?;
         self.evict(pks.into_iter().zip(msgs));
         Ok(())

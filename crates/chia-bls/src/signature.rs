@@ -519,7 +519,7 @@ impl Signature {
 
     #[classmethod]
     #[pyo3(name = "from_parent")]
-    pub fn from_parent(_cls: &Bound<'_, PyType>, _instance: &Self) -> PyResult<PyObject> {
+    pub fn from_parent(_cls: &Bound<'_, PyType>, _instance: &Self) -> PyResult<Py<pyo3::PyAny>> {
         Err(PyNotImplementedError::new_err(
             "Signature does not support from_parent().",
         ))
@@ -559,7 +559,7 @@ mod pybindings {
     use chia_traits::{FromJsonDict, ToJsonDict};
 
     impl ToJsonDict for Signature {
-        fn to_json_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
+        fn to_json_dict(&self, py: Python<'_>) -> PyResult<Py<pyo3::PyAny>> {
             let bytes = self.to_bytes();
             Ok(("0x".to_string() + &hex::encode(bytes))
                 .into_pyobject(py)?
