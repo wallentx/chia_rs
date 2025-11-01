@@ -189,7 +189,7 @@ impl BlsCache {
             ret.append((
                 PyBytes::new(py, key),
                 value.clone().into_pyobject(py)?.into_any(),
-            ))?; // `PyBytes::new` and `into_any` provide Python-owned values
+            ))?; // Returning Python-owned values ensures correct memory management by the Python GC, avoiding lifetime issues when passing Rust data to Python.
         }
         Ok(ret.into_any().unbind())
     }
