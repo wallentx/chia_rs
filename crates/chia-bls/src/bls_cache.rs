@@ -131,10 +131,9 @@ impl BlsCache {
 #[cfg(feature = "py-bindings")]
 use pyo3::{
     exceptions::PyValueError,
-    IntoPyObject,
     pybacked::PyBackedBytes,
     types::{PyAnyMethods, PyList, PyListMethods, PySequence},
-    Bound, Py, PyResult,
+    Bound, IntoPyObject, Py, PyResult,
 };
 
 #[cfg(feature = "py-bindings")]
