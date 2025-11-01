@@ -131,9 +131,10 @@ impl BlsCache {
 #[cfg(feature = "py-bindings")]
 use pyo3::{
     exceptions::PyValueError,
+    IntoPyObject,
     pybacked::PyBackedBytes,
     types::{PyAnyMethods, PyList, PyListMethods, PySequence},
-    Bound, IntoPyObject, Py, PyResult,
+    Bound, Py, PyResult,
 };
 
 #[cfg(feature = "py-bindings")]
@@ -164,12 +165,12 @@ impl BlsCache {
     ) -> PyResult<bool> {
         let pks = pks
             .try_iter()?
-            .map(|item| item?.extract::<PublicKey>().map_err(pyo3::PyErr::from))
+            .map(|item| Ok(item?.extract()?))
             .collect::<PyResult<Vec<PublicKey>>>()?;
 
         let msgs = msgs
             .try_iter()?
-            .map(|item| item?.extract::<PyBackedBytes>().map_err(pyo3::PyErr::from))
+            .map(|item| Ok(item?.extract()?))
             .collect::<PyResult<Vec<PyBackedBytes>>>()?;
 
         Ok(self.aggregate_verify(pks.into_iter().zip(msgs), sig))
@@ -198,9 +199,7 @@ impl BlsCache {
     pub fn py_update(&self, other: &Bound<'_, PySequence>) -> PyResult<()> {
         let mut c = self.cache.lock().expect("cache");
         for item in other.borrow().try_iter()? {
-            let (key, value): (Vec<u8>, GTElement) = item?
-                .extract::<(Vec<u8>, GTElement)>()
-                .map_err(pyo3::PyErr::from)?;
+            let (key, value): (Vec<u8>, GTElement) = item?.extract()?;
             c.put(
                 key.try_into()
                     .map_err(|_| PyValueError::new_err("invalid key"))?,
@@ -214,11 +213,11 @@ impl BlsCache {
     pub fn py_evict(&self, pks: &Bound<'_, PyList>, msgs: &Bound<'_, PyList>) -> PyResult<()> {
         let pks = pks
             .try_iter()?
-            .map(|item| item?.extract::<PublicKey>())
+            .map(|item| Ok(item?.extract()?))
             .collect::<PyResult<Vec<PublicKey>>>()?;
         let msgs = msgs
             .try_iter()?
-            .map(|item| item?.extract::<PyBackedBytes>().map_err(pyo3::PyErr::from))
+            .map(|item| Ok(item?.extract()?))
             .collect::<PyResult<Vec<PyBackedBytes>>>()?;
         self.evict(pks.into_iter().zip(msgs));
         Ok(())
