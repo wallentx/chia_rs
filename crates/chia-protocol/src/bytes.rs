@@ -463,7 +463,7 @@ impl<'a, 'py, const N: usize> FromPyObject<'a, 'py> for BytesImpl<N> {
     type Error = PyErr;
 
     fn extract(obj: pyo3::Borrowed<'a, 'py, PyAny>) -> PyResult<Self> {
-        let b = obj.cast::<PyBytes>().map_err(pyo3::PyErr::from)?;
+        let b = obj.cast::<PyBytes>()?;
         let slice: &[u8] = b.as_bytes();
         let buf: [u8; N] = slice.try_into()?;
         Ok(BytesImpl::<N>(buf))
