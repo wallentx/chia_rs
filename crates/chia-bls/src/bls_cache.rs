@@ -214,7 +214,7 @@ impl BlsCache {
     pub fn py_evict(&self, pks: &Bound<'_, PyList>, msgs: &Bound<'_, PyList>) -> PyResult<()> {
         let pks = pks
             .try_iter()?
-            .map(|item| item?.extract::<PublicKey>().map_err(pyo3::PyErr::from))
+            .map(|item| item?.extract::<PublicKey>())
             .collect::<PyResult<Vec<PublicKey>>>()?;
         let msgs = msgs
             .try_iter()?
