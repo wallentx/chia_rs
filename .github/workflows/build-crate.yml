@@ -26,6 +26,9 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Set up Python
+        uses: Chia-Network/actions/setup-python@main
+
       - name: Fmt
         run: cargo fmt --all -- --files-with-diff --check
 
