@@ -561,11 +561,20 @@ mod tests {
 #[cfg(feature = "py-bindings")]
 mod pytests {
     use super::*;
+    use once_cell::sync::Lazy;
     use pyo3::types::PyAnyMethods;
     use pyo3::{PyResult, Python};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
     use rstest::rstest;
+
+    static PY_READY: Lazy<()> = Lazy::new(|| {
+        Python::initialize();
+    });
+
+    fn ensure_python() {
+        Lazy::force(&PY_READY);
+    }
 
     #[test]
     fn test_json_dict_roundtrip() {
@@ -574,6 +583,7 @@ mod pytests {
         for _i in 0..50 {
             rng.fill(data.as_mut_slice());
             let sk = SecretKey::from_seed(&data);
+            ensure_python();
             Python::attach(|py| -> PyResult<()> {
                 let string = sk.to_json_dict(py)?;
                 let py_class = py.get_type::<SecretKey>();
@@ -591,31 +601,32 @@ mod pytests {
     #[rstest]
     #[case(
         "0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e",
-        "PrivateKey: expected 32 bytes, got 31"
+        "PrivateKey, invalid length 31 expected 32"
     )]
     #[case(
         "0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00",
-        "PrivateKey: expected 32 bytes, got 33"
+        "PrivateKey, invalid length 33 expected 32"
     )]
     #[case(
         "000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00",
-        "PrivateKey: expected 32 bytes, got 33"
+        "PrivateKey, invalid length 33 expected 32"
     )]
     #[case(
         "000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e",
-        "PrivateKey: expected 32 bytes, got 31"
+        "PrivateKey, invalid length 31 expected 32"
     )]
     #[case(
         "0r0102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-        "invalid hex character"
+        "invalid hex"
     )]
     fn test_json_dict(#[case] input: &str, #[case] msg: &str) {
+        ensure_python();
         Python::attach(|py| -> PyResult<()> {
             let py_class = py.get_type::<SecretKey>();
             let err = py_class
                 .call_method1("from_json_dict", (input,))
                 .unwrap_err();
-            assert!(err.value(py).to_string().contains(msg));
+            assert_eq!(err.value(py).to_string(), msg);
             Ok(())
         })
         .unwrap();

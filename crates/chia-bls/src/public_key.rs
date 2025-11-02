@@ -763,11 +763,20 @@ mod tests {
 mod pytests {
     use super::*;
     use crate::SecretKey;
+    use once_cell::sync::Lazy;
     use pyo3::types::PyAnyMethods;
     use pyo3::{PyResult, Python};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
     use rstest::rstest;
+
+    static PY_READY: Lazy<()> = Lazy::new(|| {
+        Python::initialize();
+    });
+
+    fn ensure_python() {
+        Lazy::force(&PY_READY);
+    }
 
     #[test]
     fn test_json_dict_roundtrip() {
@@ -777,6 +786,7 @@ mod pytests {
             rng.fill(data.as_mut_slice());
             let sk = SecretKey::from_seed(&data);
             let pk = sk.public_key();
+            ensure_python();
             Python::attach(|py| -> PyResult<()> {
                 let string = pk.to_json_dict(py)?;
                 let py_class = py.get_type::<PublicKey>();
@@ -791,18 +801,19 @@ mod pytests {
     }
 
     #[rstest]
-    #[case("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e", "PublicKey: expected 48 bytes, got 47")]
-    #[case("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00", "PublicKey: expected 48 bytes, got 49")]
-    #[case("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e", "PublicKey: expected 48 bytes, got 47")]
-    #[case("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00", "PublicKey: expected 48 bytes, got 49")]
-    #[case("0x00r102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f", "invalid hex character")]
+    #[case("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e", "PublicKey, invalid length 47 expected 48")]
+    #[case("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00", "PublicKey, invalid length 49 expected 48")]
+    #[case("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e", "PublicKey, invalid length 47 expected 48")]
+    #[case("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00", "PublicKey, invalid length 49 expected 48")]
+    #[case("0x00r102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f", "invalid hex")]
     fn test_json_dict(#[case] input: &str, #[case] msg: &str) {
+        ensure_python();
         Python::attach(|py| -> PyResult<()> {
             let py_class = py.get_type::<PublicKey>();
             let err = py_class
                 .call_method1("from_json_dict", (input,))
                 .unwrap_err();
-            assert!(err.value(py).to_string().contains(msg));
+            assert_eq!(err.value(py).to_string(), msg);
             Ok(())
         })
         .unwrap();

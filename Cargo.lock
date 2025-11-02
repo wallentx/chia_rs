@@ -335,6 +335,7 @@ dependencies = [
  "hex",
  "hkdf",
  "linked-hash-map",
+ "once_cell",
  "pyo3",
  "rand",
  "rstest",

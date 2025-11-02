@@ -1283,17 +1283,27 @@ mod tests {
 mod pytests {
     use super::*;
 
+    use once_cell::sync::Lazy;
     use pyo3::types::PyAnyMethods;
     use pyo3::{IntoPyObject, PyResult, Python};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
     use rstest::rstest;
 
+    static PY_READY: Lazy<()> = Lazy::new(|| {
+        Python::initialize();
+    });
+
+    fn ensure_python() {
+        Lazy::force(&PY_READY);
+    }
+
     #[test]
     fn test_json_dict_roundtrip() {
         let mut rng = StdRng::seed_from_u64(1337);
         let mut data = [0u8; 32];
         let mut msg = [0u8; 10];
+        ensure_python();
         for _i in 0..50 {
             rng.fill(data.as_mut_slice());
             rng.fill(msg.as_mut_slice());
@@ -1314,18 +1324,34 @@ mod pytests {
     }
 
     #[rstest]
-    #[case("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e", "Signature: expected 96 bytes, got 95")]
-    #[case("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00", "Signature: expected 96 bytes, got 97")]
-    #[case("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e", "Signature: expected 96 bytes, got 95")]
-    #[case("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00", "Signature: expected 96 bytes, got 97")]
-    #[case("00r102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f", "invalid hex character")]
+    #[case(
+        "0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e",
+        "Signature, invalid length 95 expected 96"
+    )]
+    #[case(
+        "0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00",
+        "Signature, invalid length 97 expected 96"
+    )]
+    #[case(
+        "000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e",
+        "Signature, invalid length 95 expected 96"
+    )]
+    #[case(
+        "000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00",
+        "Signature, invalid length 97 expected 96"
+    )]
+    #[case(
+        "00r102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+        "invalid hex"
+    )]
     fn test_json_dict(#[case] input: &str, #[case] msg: &str) {
+        ensure_python();
         Python::attach(|py| -> PyResult<()> {
             let py_class = py.get_type::<Signature>();
             let err = py_class
                 .call_method1("from_json_dict", (input,))
                 .unwrap_err();
-            assert!(err.value(py).to_string().contains(msg));
+            assert_eq!(err.value(py).to_string(), msg);
             Ok(())
         })
         .unwrap();
