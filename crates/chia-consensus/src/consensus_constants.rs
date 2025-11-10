@@ -14,6 +14,7 @@ use hex_literal::hex;
     py_uppercase,
     py_pickle
 )]
+#[cfg_attr(feature = "py-bindings", allow(clippy::needless_question_mark))]
 #[streamable]
 pub struct ConsensusConstants {
     /// How many blocks to target per sub-slot.
@@ -66,8 +67,10 @@ pub struct ConsensusConstants {
     min_plot_size_v1: u8,
     max_plot_size_v1: u8,
 
-    /// v2 plots only support a single k-value, specified by this constant.
-    plot_size_v2: u8,
+    /// The smallest and largest allowed plot size for the v2 plot format.
+    /// These are the K-values for the plots.
+    min_plot_size_v2: u8,
+    max_plot_size_v2: u8,
 
     /// The target number of seconds per sub-slot.
     sub_slot_time_target: u16,
@@ -181,7 +184,8 @@ pub const TEST_CONSTANTS: ConsensusConstants = ConsensusConstants {
     number_zero_bits_plot_filter_v2: 5,
     min_plot_size_v1: 32,
     max_plot_size_v1: 50,
-    plot_size_v2: 28,
+    min_plot_size_v2: 28,
+    max_plot_size_v2: 28,
     sub_slot_time_target: 600,
     num_sp_intervals_extra: 3,
     max_future_time2: 2 * 60,

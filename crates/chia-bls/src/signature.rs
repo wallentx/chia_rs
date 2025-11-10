@@ -5,9 +5,9 @@ use chia_traits::{read_bytes, Streamable};
 #[cfg(feature = "py-bindings")]
 use pyo3::exceptions::PyNotImplementedError;
 #[cfg(feature = "py-bindings")]
-use pyo3::prelude::*;
+use pyo3::types::{PyAny, PyType};
 #[cfg(feature = "py-bindings")]
-use pyo3::types::PyType;
+use pyo3::{Bound, Py, PyResult, Python};
 use std::borrow::Borrow;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -519,7 +519,7 @@ impl Signature {
 
     #[classmethod]
     #[pyo3(name = "from_parent")]
-    pub fn from_parent(_cls: &Bound<'_, PyType>, _instance: &Self) -> PyResult<PyObject> {
+    pub fn from_parent(_cls: &Bound<'_, PyType>, _instance: &Self) -> PyResult<Py<PyAny>> {
         Err(PyNotImplementedError::new_err(
             "Signature does not support from_parent().",
         ))
@@ -555,11 +555,12 @@ mod pybindings {
     use super::*;
 
     use crate::parse_hex::parse_hex_string;
+    use pyo3::IntoPyObject;
 
     use chia_traits::{FromJsonDict, ToJsonDict};
 
     impl ToJsonDict for Signature {
-        fn to_json_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
+        fn to_json_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
             let bytes = self.to_bytes();
             Ok(("0x".to_string() + &hex::encode(bytes))
                 .into_pyobject(py)?
@@ -1282,51 +1283,77 @@ mod tests {
 mod pytests {
     use super::*;
 
-    use pyo3::Python;
+    use once_cell::sync::Lazy;
+    use pyo3::types::PyAnyMethods;
+    use pyo3::{IntoPyObject, PyResult, Python};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
     use rstest::rstest;
 
+    static PY_READY: Lazy<()> = Lazy::new(|| {
+        Python::initialize();
+    });
+
+    fn ensure_python() {
+        Lazy::force(&PY_READY);
+    }
+
     #[test]
     fn test_json_dict_roundtrip() {
-        pyo3::prepare_freethreaded_python();
         let mut rng = StdRng::seed_from_u64(1337);
         let mut data = [0u8; 32];
         let mut msg = [0u8; 10];
+        ensure_python();
         for _i in 0..50 {
             rng.fill(data.as_mut_slice());
             rng.fill(msg.as_mut_slice());
             let sk = SecretKey::from_seed(&data);
             let sig = sign(&sk, msg);
-            Python::with_gil(|py| {
-                let string = sig.to_json_dict(py).expect("to_json_dict");
-                let py_class = py.get_type::<Signature>();
-                let sig2 = Signature::from_json_dict(&py_class, py, string.bind(py))
-                    .unwrap()
-                    .extract(py)
-                    .unwrap();
+            Python::attach(|py| -> PyResult<()> {
+                let bound_sig = sig.clone().into_pyobject(py)?;
+                let string = bound_sig.call_method0("to_json_dict")?;
+                let sig2: Signature = bound_sig
+                    .getattr("from_json_dict")?
+                    .call1((string,))?
+                    .extract()?;
                 assert_eq!(sig, sig2);
-            });
+                Ok(())
+            })
+            .unwrap();
         }
     }
 
     #[rstest]
-    #[case("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e", "Signature, invalid length 95 expected 96")]
-    #[case("0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00", "Signature, invalid length 97 expected 96")]
-    #[case("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e", "Signature, invalid length 95 expected 96")]
-    #[case("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00", "Signature, invalid length 97 expected 96")]
-    #[case("00r102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f", "invalid hex")]
+    #[case(
+        "0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e",
+        "Signature, invalid length 95 expected 96"
+    )]
+    #[case(
+        "0x000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00",
+        "Signature, invalid length 97 expected 96"
+    )]
+    #[case(
+        "000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e",
+        "Signature, invalid length 95 expected 96"
+    )]
+    #[case(
+        "000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f00",
+        "Signature, invalid length 97 expected 96"
+    )]
+    #[case(
+        "00r102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0ff000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+        "invalid hex"
+    )]
     fn test_json_dict(#[case] input: &str, #[case] msg: &str) {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        ensure_python();
+        Python::attach(|py| -> PyResult<()> {
             let py_class = py.get_type::<Signature>();
-            let err = Signature::from_json_dict(
-                &py_class,
-                py,
-                &input.to_string().into_pyobject(py).unwrap().into_any(),
-            )
-            .unwrap_err();
-            assert_eq!(err.value(py).to_string(), msg.to_string());
-        });
+            let err = py_class
+                .call_method1("from_json_dict", (input,))
+                .unwrap_err();
+            assert_eq!(err.value(py).to_string(), msg);
+            Ok(())
+        })
+        .unwrap();
     }
 }

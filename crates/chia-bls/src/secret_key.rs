@@ -276,7 +276,7 @@ impl SecretKey {
 
     #[classmethod]
     #[pyo3(name = "from_parent")]
-    pub fn from_parent(_cls: &Bound<'_, PyType>, _instance: &Self) -> PyResult<PyObject> {
+    pub fn from_parent(_cls: &Bound<'_, PyType>, _instance: &Self) -> PyResult<Py<PyAny>> {
         Err(PyNotImplementedError::new_err(
             "SecretKey does not support from_parent().",
         ))
@@ -306,11 +306,12 @@ mod pybindings {
     use super::*;
 
     use crate::parse_hex::parse_hex_string;
+    use pyo3::IntoPyObject;
 
     use chia_traits::{FromJsonDict, ToJsonDict};
 
     impl ToJsonDict for SecretKey {
-        fn to_json_dict(&self, py: Python<'_>) -> PyResult<PyObject> {
+        fn to_json_dict(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
             let bytes = self.to_bytes();
             Ok(("0x".to_string() + &hex::encode(bytes))
                 .into_pyobject(py)?
@@ -560,29 +561,40 @@ mod tests {
 #[cfg(feature = "py-bindings")]
 mod pytests {
     use super::*;
-    use pyo3::Python;
+    use once_cell::sync::Lazy;
+    use pyo3::types::PyAnyMethods;
+    use pyo3::{PyResult, Python};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
     use rstest::rstest;
 
+    static PY_READY: Lazy<()> = Lazy::new(|| {
+        Python::initialize();
+    });
+
+    fn ensure_python() {
+        Lazy::force(&PY_READY);
+    }
+
     #[test]
     fn test_json_dict_roundtrip() {
-        pyo3::prepare_freethreaded_python();
         let mut rng = StdRng::seed_from_u64(1337);
         let mut data = [0u8; 32];
         for _i in 0..50 {
             rng.fill(data.as_mut_slice());
             let sk = SecretKey::from_seed(&data);
-            Python::with_gil(|py| {
-                let string = sk.to_json_dict(py).expect("to_json_dict");
+            ensure_python();
+            Python::attach(|py| -> PyResult<()> {
+                let string = sk.to_json_dict(py)?;
                 let py_class = py.get_type::<SecretKey>();
-                let sk2 = SecretKey::from_json_dict(&py_class, py, string.bind(py))
-                    .unwrap()
-                    .extract(py)
-                    .unwrap();
+                let sk2: SecretKey = py_class
+                    .call_method1("from_json_dict", (string,))?
+                    .extract()?;
                 assert_eq!(sk, sk2);
                 assert_eq!(sk.public_key(), sk2.public_key());
-            });
+                Ok(())
+            })
+            .unwrap();
         }
     }
 
@@ -608,16 +620,15 @@ mod pytests {
         "invalid hex"
     )]
     fn test_json_dict(#[case] input: &str, #[case] msg: &str) {
-        pyo3::prepare_freethreaded_python();
-        Python::with_gil(|py| {
+        ensure_python();
+        Python::attach(|py| -> PyResult<()> {
             let py_class = py.get_type::<SecretKey>();
-            let err = SecretKey::from_json_dict(
-                &py_class,
-                py,
-                &input.to_string().into_pyobject(py).unwrap().into_any(),
-            )
-            .unwrap_err();
-            assert_eq!(err.value(py).to_string(), msg.to_string());
-        });
+            let err = py_class
+                .call_method1("from_json_dict", (input,))
+                .unwrap_err();
+            assert_eq!(err.value(py).to_string(), msg);
+            Ok(())
+        })
+        .unwrap();
     }
 }
